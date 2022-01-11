@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>領土拡大シミュレーション</title>
+<script>
+let canvas, context;
+let armyArray = new Array();
+let map = new Array();
+const size = 15, w = 30, h = 30;
+let request = null;
+// 都市データ
+const cities = [{"pos":[5,5],"alive":true,"color":"hsl(0,50%,50%)","num":0},
+    {"pos":[15,5],"alive":true,"color":"hsl(40,50%,50%)","num":0},
+    {"pos":[25,5],"alive":true,"color":"hsl(80,50%,30%)","num":0},
+    {"pos":[5,15],"alive":true,"color":"hsl(120,100%,30%)","num":0},
+    {"pos":[15,15],"alive":true,"color":"hsl(160,50%,50%)","num":0},
+    {"pos":[25,15],"alive":true,"color":"hsl(200,70%,50%)","num":0},
+    {"pos":[5,25],"alive":true,"color":"hsl(240,50%,70%)","num":0},
+    {"pos":[15,25],"alive":true,"color":"hsl(280,50%,50%)","num":0},
+    {"pos":[25,25],"alive":true,"color":"hsl(320,70%,70%)","num":0}];
+
+// 軍隊クラス
+class Army {
+    constructor(id, x, y) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.r = 3;
+        const angle = (Math.random() * 70 + 19)/180 * Math.PI;
+        this.dirX = Math.cos(angle) * 2;
+        this.dirY = Math.sin(angle) * 2;
+    }
+    update() {
+        // 移動
+        const [ox, oy] = [Math.floor(this.x/size), Math.floor(this.y/size)];
+        this.x += this.dirX;
+        this.y += this.dirY;
+        let [x, y] = [Math.floor(this.x/size), Math.floor(this.y/size)];
+        if (x < 0) [x, this.x] = [w-1, (w-1)*size];
+        if (x > w-1) [x, this.x] = [0, 0];
+        if (y < 0) [y, this.y] = [h-1, (h-1)*size];
+        if (y > h-1) [y, this.y] = [0, 0];
+        if (map[x][y] != this.id) {
+            if ((map[x][y] > -1) && (cities[map[x][y]].alive)) {
+                const [cx, cy] = cities[map[x][y]].pos;
+                if ((x == cx) && (y == cy)) {
+                    // 占領
+                    cities[map[x][y]].alive = false;
+                    for (const army of armyArray) {
+                        if (army.id == map[x][y]) {
+                            army.id = this.id;
+                            army.x = cx * size;
+                            army.y = cy * size;
+                        }
+                    }
+                }
+            }
+            map[x][y] = this.id;
+            if (ox != x) this.dirX *= -1;
+            if (oy != y) this.ditY *= -1;
+        }
+        // 描画
+        context.fillStyle = cities[this.id].color;
+        context.beginPath();
+        context.arc(this.x, this.y, this.r, 0, Math.PI*2);
+        context.fill();
+        context.stroke();        
+    }
+}
+
+const init = () => {
+    // キャンバスの取得
+    canvas = document.getElementById("map");
+    context = canvas.getContext("2d");
+    [canvas.width, canvas.height] = [w * size, h * size];
+    // スコア欄の作成
+    const scoreList = document.getElementById("scoreList");
+    for (let i = 0; i < cities.length; i++) {
+        const mark = document.createElement("span");
+        mark.style.color = cities[i].color;
+        mark.innerText = "■";
+        const score = document.createElement("span");
+        score.id = `score_${i}`;
+        scoreList.appendChild(mark);
+        scoreList.appendChild(score);
+    }
+    // 初期化
+    initMap();
+}
+
+const initMap = () => {
+    // マップの初期化
+    if (request != null) window.cancelAnimationFrame(request);
+    document.getElementById("start").disabled = false;
+    map = new Array(w);
+    armyArray = [];
+    for (let x = 0; x < w; x++) {
+        map[x] = new Array(h);
+        for (let y = 0; y < h; y++) {
+            map[x][y] = -1;
+        }
+    }
+    // 都市、軍隊の配置
+    for (let i = 0; i < cities.length; i++) {
+        cities[i].alive = true;
+        const [x, y] = cities[i].pos;
+        map[x][y] = i;
+        armyArray.push(new Army(i, x * size, y * size));
+        armyArray.push(new Army(i, x * size, y * size));
+    }
+    drawMap();
+}
+
+const drawMap = () => {
+    // マップの描画
+    for (const city of cities) {
+        city.num = 0;
+    }
+    context.strokeStyle = "#CCCCCC";
+    for (let x = 0; x < w; x++) {
+        for (let y = 0; y < h; y++) {
+            const [mx, my] = [x * size, y * size];
+            context.fillStyle = "#FFFFFF";
+            if (map[x][y] > -1) {
+                cities[map[x][y]].num++;
+                context.fillStyle = cities[map[x][y]].color;
+            }
+            context.fillRect(mx, my, size, size);
+            context.strokeRect(mx, my, size, size);
+        }
+    }
+    // 都市の描画
+    context.strokeStyle = "#000000";
+    for (const city of cities) {
+        if (city.alive) {
+            const [cx, cy] = [city.pos[0] * size, city.pos[1] * size];
+            context.strokeRect(cx+3, cy+3, size-6, size-6);
+        }
+    }
+    // スコアの表示
+    let cnt = 0, win;
+    for (let i = 0; i < cities.length; i++) {
+        const score = document.getElementById(`score_${i}`);
+        score.innerText = Math.floor(cities[i].num / (w*h) * 100) + "%";
+        score.style.color = "#000000";
+        if (cities[i].alive) {
+            [cnt, win] = [cnt+1, score];
+            score.style.textDecoration = "none";
+        } else {
+            score.style.textDecoration = "line-through double";
+        }
+    }
+    if (cnt == 1) {
+        win.innerText += " Win!";
+        win.style.color = "#FF0000";
+    }
+}
+
+const update = () => {
+    // マップ、軍隊の更新
+    drawMap();
+    for (const army of armyArray) {
+        army.update();
+    }
+    request = window.requestAnimationFrame(update);
+    document.getElementById("start").disabled = true;
+}
+</script>
+</head>
+<body onload="init()">
+<p>領土拡大シミュレーション</p>
+<input type="button" value="リセット" onclick="initMap()">
+<input type="button" id="start" value="スタート" onclick="update()">
+<hr>
+<div id="scoreList"></div>
+<canvas id="map"></canvas>
+</body>
+</html>
